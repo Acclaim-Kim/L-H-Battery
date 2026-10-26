@@ -695,22 +695,44 @@
     if (!containerBox) return;
     
     const unit = document.getElementById('unit').value;
-    const axis = containerBox.querySelector('.servo-axis').value;
+    const axisSelect = containerBox.querySelector('.servo-axis');
     const part = containerBox.querySelector('.servo-part').value;
     const descSelect = containerBox.querySelector('.servo-desc-select');
     const descInput = containerBox.querySelector('.servo-desc-input');
 
-    if (!descSelect) return;
+    if (!descSelect || !axisSelect) return;
 
+    // Taping Unit: confirmed Part -> Axis -> Teaching Position mapping.
+    // Attacher Jig stays manual until its parameters are defined.
     if (unit.startsWith('Taping Unit')) {
-      descSelect.style.display = 'none';
-      descInput.style.display = 'block';
+      const mappings = {
+        'Cutting Knife': { axis: 'X', positions: ['Bwd Pos', 'Fwd Pos'] },
+        'Feeding Gripper': { axis: 'Z', positions: ['Standby Pos', 'Grip Pos', 'Avoid Pos'] }
+      };
+      const mapping = mappings[part];
+      descSelect.innerHTML = '<option value="">-- 선택 / Select --</option>';
+
+      if (mapping) {
+        axisSelect.value = mapping.axis;
+        axisSelect.disabled = true;
+        descSelect.style.display = 'block';
+        descInput.style.display = 'none';
+        descInput.value = '';
+        addOptions(descSelect, mapping.positions);
+      } else {
+        axisSelect.disabled = false;
+        // Clear the previous fixed axis when switching Parts.
+        if (elementElement.classList.contains('servo-part')) axisSelect.value = '';
+        descSelect.style.display = 'none';
+        descInput.style.display = 'block';
+      }
       return;
-    } else {
-      descSelect.style.display = 'block';
-      descInput.style.display = 'none';
     }
 
+    axisSelect.disabled = false;
+    const axis = axisSelect.value;
+    descSelect.style.display = 'block';
+    descInput.style.display = 'none';
     descSelect.innerHTML = '<option value="">-- 선택 / Select --</option>';
     const isFoldingUnit = (unit === "90 Folding" || unit.includes("270 Folding"));
     
