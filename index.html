@@ -904,7 +904,13 @@
         const servoType = box.querySelector('.servo-type').value;
         const servoAxis = box.querySelector('.servo-axis').value;
         const partVal = box.querySelector('.servo-part').value;
-        let descVal = unit.startsWith('Taping Unit') ? box.querySelector('.servo-desc-input').value : box.querySelector('.servo-desc-select').value;
+        // Read from the visible input: preset dropdown for Cutting Knife / Feeding Gripper,
+        // free-text input for Attacher Jig, and dropdown for other units.
+        const descSelect = box.querySelector('.servo-desc-select');
+        const descInput = box.querySelector('.servo-desc-input');
+        const descVal = descInput.style.display === 'block'
+          ? descInput.value.trim()
+          : descSelect.value;
         const servoVal = box.querySelector('.servo-val').value;
         const servoReason = box.querySelector('.servo-reason').value;
 
