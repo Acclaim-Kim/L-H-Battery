@@ -608,6 +608,8 @@
             <option value="">-- 선택 / Select --</option>
             <option value="펀치 유지 시간">펀치 유지 시간 (Punch Dwell Time)</option>
             <option value="press 유지시간">press 유지시간 (Press Holding Time)</option>
+            <option value="Step Height Length">단차 발생 길이 (Step Height Length)</option>
+            <option value="Remained length after piercing FWD">피어싱 전진 후 남은 길이 (Remained length after piercing FWD)</option>
           </select>
         </div>
         <div class="form-group">
@@ -904,7 +906,13 @@
         const servoType = box.querySelector('.servo-type').value;
         const servoAxis = box.querySelector('.servo-axis').value;
         const partVal = box.querySelector('.servo-part').value;
-        let descVal = unit.startsWith('Taping Unit') ? box.querySelector('.servo-desc-input').value : box.querySelector('.servo-desc-select').value;
+        // Read from the visible input: preset dropdown for Cutting Knife / Feeding Gripper,
+        // free-text input for Attacher Jig, and dropdown for other units.
+        const descSelect = box.querySelector('.servo-desc-select');
+        const descInput = box.querySelector('.servo-desc-input');
+        const descVal = descInput.style.display === 'block'
+          ? descInput.value.trim()
+          : descSelect.value;
         const servoVal = box.querySelector('.servo-val').value;
         const servoReason = box.querySelector('.servo-reason').value;
 
