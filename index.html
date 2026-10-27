@@ -288,7 +288,19 @@
     th:nth-child(6) { width: 55px; }  
     th:nth-child(7) { width: 160px; } 
     th:nth-child(8) { width: 90px; }  
-    th:nth-child(9) { width: 170px; } 
+    th:nth-child(9) { width: 170px; }
+    .current-taping-table { min-width: 880px; }
+    .current-taping-table th { width: auto; text-align: center; }
+    .current-taping-table td { text-align: center; }
+    .current-taping-table td:first-child, .current-taping-table td:nth-child(2) { font-weight: bold; }
+    .current-value { font-weight: bold; font-size: 14px; }
+    .current-date { color: #64748b; font-size: 11px; margin-top: 4px; }
+    .parameter-history-btn { margin-top: 7px; padding: 5px 9px; background: #eef4fb; color: #185d92; border: 1px solid #b8d2eb; border-radius: 5px; font-size: 11px; cursor: pointer; }
+    .parameter-history-btn:hover { background: #dcecfb; }
+    .history-focus-bar { background: #edf5fd; border: 1px solid #bfd7f0; border-radius: 6px; padding: 11px 13px; margin-bottom: 14px; font-size: 13px; display: none; align-items: center; justify-content: space-between; gap: 12px; }
+    .history-focus-bar button { border: 1px solid #a3bed8; background: white; border-radius: 4px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+    .current-intro { color: #64748b; font-size: 13px; margin: 8px 0 18px; }
+    @media (max-width: 620px) { .tab-btn { font-size: 11px; padding: 10px 5px; } .container { padding: 15px; margin: 10px; } } 
   </style>
 </head>
 <body>
@@ -301,7 +313,8 @@
 
   <div class="tab-container">
     <button id="tab-input" class="tab-btn active" onclick="switchMode('input')">✍️ 파라미터 등록 (Input)</button>
-    <button id="tab-view" class="tab-btn" onclick="switchMode('view')">🔍 이력 조회 (History View)</button>
+    <button id="tab-view" class="tab-btn" onclick="clearParameterHistoryFocus(); switchMode('view')">🔍 이력 조회 (History View)</button>
+    <button id="tab-current" class="tab-btn" onclick="switchMode('current')">📊 Current Taping Parameter View</button>
   </div>
 
   <div id="section-input">
@@ -434,6 +447,10 @@
       </div>
     </div>
 
+    <div id="history-focus-bar" class="history-focus-bar">
+      <span id="history-focus-label"></span>
+      <button type="button" onclick="clearParameterHistoryFocus()">✕ 상세 필터 해제</button>
+    </div>
     <div class="table-wrapper">
       <table>
         <thead>
@@ -458,6 +475,36 @@
     </div>
   </div>
 
+  <div id="section-current" style="display: none;">
+    <p class="current-intro">라인별 Taping Unit A/B의 가장 최근 등록 값을 표시합니다. 값마다 변경 시점이 다를 수 있습니다.</p>
+    <button class="fetch-btn" id="current-refresh-btn" onclick="loadCurrentTapingParameters()">🔄 최신 Taping Parameter 불러오기 (Refresh)</button>
+    <div class="form-group" style="max-width:260px;">
+      <label for="current-filter-line">라인 선택 (Line Filter)</label>
+      <select id="current-filter-line" onchange="renderCurrentTapingTable()">
+        <option value="">전체 라인 / All Lines</option>
+        <option value="mass-production">Mass Production (4-2, 5-1, 5-2)</option>
+      </select>
+    </div>
+    <div class="table-wrapper" style="max-height: 720px;">
+      <table class="current-taping-table">
+        <thead>
+          <tr>
+            <th>Line</th>
+            <th>Unit</th>
+            <th>Cutting Knife X<br>Bwd Pos</th>
+            <th>Cutting Knife X<br>Fwd Pos</th>
+            <th>Step Height Length</th>
+            <th>Remained length after piercing FWD</th>
+          </tr>
+        </thead>
+        <tbody id="current-taping-tbody">
+          <tr><td colspan="6" style="text-align:center; padding:20px;">탭을 열면 최신 데이터를 불러옵니다.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="current-intro" id="current-taping-status" aria-live="polite"></p>
+  </div>
+
   <div id="status" class="status-msg"></div>
 </div>
 
@@ -465,6 +512,7 @@
   // 💡 아래의 URL은 반드시 사용자님의 Apps Script 배포 URL로 교체해 주세요.
   const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby-BsffYuaUIi5KF9yGvPZlJAjUah_rSLd7d3NKJWfJSf9Kilw7Q2uHmkmv26PBW0c/exec";
 
+  let parameterHistoryFocus = null;
   let cachedHistoryData = []; 
   let currentTempParts = []; 
 
@@ -522,6 +570,7 @@
   function initLineOptions() {
     const lineSelect = document.getElementById('line');
     const filterLineSelect = document.getElementById('filter-line');
+    const currentLineSelect = document.getElementById('current-filter-line');
     for (let i = 1; i <= 6; i++) {
       for (let j = 1; j <= 2; j++) {
         const val = `${i}-${j}`;
@@ -531,6 +580,9 @@
         const opt2 = document.createElement('option');
         opt2.value = val; opt2.textContent = val;
         filterLineSelect.appendChild(opt2);
+        const opt3 = document.createElement('option');
+        opt3.value = val; opt3.textContent = val;
+        currentLineSelect.appendChild(opt3);
       }
     }
   }
@@ -543,8 +595,10 @@
   function switchMode(mode) {
     document.getElementById('tab-input').classList.remove('active');
     document.getElementById('tab-view').classList.remove('active');
+    document.getElementById('tab-current').classList.remove('active');
     document.getElementById('section-input').style.display = 'none';
     document.getElementById('section-view').style.display = 'none';
+    document.getElementById('section-current').style.display = 'none';
     document.getElementById('status').innerText = '';
 
     if (mode === 'input') {
@@ -553,6 +607,10 @@
     } else if (mode === 'view') {
       document.getElementById('tab-view').classList.add('active');
       document.getElementById('section-view').style.display = 'block';
+    } else if (mode === 'current') {
+      document.getElementById('tab-current').classList.add('active');
+      document.getElementById('section-current').style.display = 'block';
+      loadCurrentTapingParameters();
     }
   }
 
@@ -1066,6 +1124,164 @@ async function loadHistoryFromServer() {
     }
   }
 
+  // Current Taping Parameter View: Each parameter is independently selected by latest timestamp.
+  // The existing Apps Script doGet returns columns A..J as arrays, with no server-side changes needed.
+  let currentTapingHistory = [];
+  const tapingParameterKeys = ['bwd', 'fwd', 'step', 'remaining'];
+
+  function classifyTapingParameter(row) {
+    const contentType = String(row[4] || '').trim(); // E
+    const subType = String(row[5] || '').trim();     // F
+    const axis = String(row[6] || '').trim();        // G
+    const detail = String(row[7] || '').trim();      // H
+    if (contentType === 'Servo Parameter' && subType === '위치' && axis === 'X') {
+      if (detail === 'Cutting Knife - Bwd Pos') return 'bwd';
+      if (detail === 'Cutting Knife - Fwd Pos') return 'fwd';
+    }
+    if (contentType === 'Normal Parameter') {
+      if (subType === 'Step Height Length') return 'step';
+      if (subType === 'Remained length after piercing FWD') return 'remaining';
+    }
+    return null;
+  }
+
+  function timeKey(value) {
+    // Apps Script formats timestamps as yyyy-MM-dd HH:mm; lexicographic sort works.
+    const raw = String(value || '').trim();
+    const matched = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::\d{2})?/);
+    return matched ? `${matched[1]} ${matched[2]}` : '';
+  }
+
+  async function loadCurrentTapingParameters() {
+    const status = document.getElementById('current-taping-status');
+    const tbody = document.getElementById('current-taping-tbody');
+    const btn = document.getElementById('current-refresh-btn');
+    status.textContent = '데이터를 불러오는 중...';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;">⏳ 최신 기록 확인 중...</td></tr>';
+    btn.disabled = true;
+    try {
+      const response = await fetch(GOOGLE_SCRIPT_URL, { cache: 'no-store' });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error(data && data.error ? data.error : 'Unexpected response');
+      currentTapingHistory = data;
+      renderCurrentTapingTable();
+      status.textContent = `Google Sheets 기록 ${data.length}건을 확인했습니다. 각 항목은 가장 최근 등록값을 개별적으로 표시합니다.`;
+    } catch (error) {
+      console.error('Current Taping Parameter load failed:', error);
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;">❌ 데이터를 불러오지 못했습니다. 잠시 후 Refresh를 눌러주세요.</td></tr>';
+      status.textContent = '조회 오류: ' + error.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function renderCurrentTapingTable() {
+    const tbody = document.getElementById('current-taping-tbody');
+    const onlyLine = document.getElementById('current-filter-line').value;
+    tbody.replaceChildren();
+    const latest = new Map();
+    currentTapingHistory.forEach((row, index) => {
+      if (!Array.isArray(row)) return;
+      const line = String(row[1] || '').trim();
+      const unit = String(row[2] || '').trim();
+      if (!line || (unit !== 'Taping Unit A' && unit !== 'Taping Unit B')) return;
+      const parameter = classifyTapingParameter(row);
+      if (!parameter) return;
+      const key = `${line}||${unit}||${parameter}`;
+      const date = timeKey(row[0]);
+      const old = latest.get(key);
+      // Newer timestamp wins; same-minute or unparseable timestamps use later sheet row.
+      if (!old || date > old.date || (date === old.date && index > old.index)) {
+        latest.set(key, { value: row[8], date, index });
+      }
+    });
+    const lines = [];
+    for (let i = 1; i <= 6; i++) for (let j = 1; j <= 2; j++) lines.push(`${i}-${j}`);
+    const massProductionLines = ['4-2', '5-1', '5-2'];
+    const displayLines = onlyLine === 'mass-production'
+      ? massProductionLines
+      : onlyLine ? lines.filter(x => x === onlyLine) : lines;
+    for (const line of displayLines) {
+      for (const unit of ['Taping Unit A', 'Taping Unit B']) {
+        const tr = document.createElement('tr');
+        for (const label of [line, unit]) {
+          const td = document.createElement('td'); td.textContent = label; tr.appendChild(td);
+        }
+        for (const parameter of tapingParameterKeys) {
+          const td = document.createElement('td');
+          const latestValue = latest.get(`${line}||${unit}||${parameter}`);
+          if (latestValue && latestValue.value !== '' && latestValue.value != null) {
+            const value = document.createElement('div');
+            value.className = 'current-value';
+            value.textContent = String(latestValue.value);
+            td.appendChild(value);
+            if (latestValue.date) {
+              const date = document.createElement('div');
+              date.className = 'current-date';
+              date.textContent = latestValue.date;
+              td.appendChild(date);
+            }
+            const historyBtn = document.createElement('button');
+            historyBtn.type = 'button';
+            historyBtn.className = 'parameter-history-btn';
+            historyBtn.textContent = '이력 조회';
+            historyBtn.title = `${line} / ${unit} 해당 파라미터의 변경 이력 보기`;
+            historyBtn.addEventListener('click', () => openParameterHistory(line, unit, parameter));
+            td.appendChild(historyBtn);
+          } else {
+            td.textContent = '—';
+          }
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+    }
+  }
+
+  // Jump from a current value to its exact change history.
+  // Use row classification, not text search, so similarly named parameters do not mix.
+  function openParameterHistory(line, unit, parameter) {
+    parameterHistoryFocus = { line, unit, parameter };
+    document.getElementById('filter-line').value = line;
+    document.getElementById('filter-unit').value = unit;
+    document.getElementById('filter-axis').value = (parameter === 'bwd' || parameter === 'fwd') ? 'X' : '';
+    document.getElementById('filter-part').value = '';
+    switchMode('view');
+    updateHistoryFocusBar();
+    // Current view already fetched fresh data; use it immediately without another request.
+    cachedHistoryData = currentTapingHistory;
+    renderHistoryTable();
+    document.getElementById('section-view').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function updateHistoryFocusBar() {
+    const bar = document.getElementById('history-focus-bar');
+    const label = document.getElementById('history-focus-label');
+    if (!parameterHistoryFocus) {
+      bar.style.display = 'none';
+      return;
+    }
+    const names = {
+      bwd: 'Cutting Knife - Bwd Pos',
+      fwd: 'Cutting Knife - Fwd Pos',
+      step: 'Step Height Length',
+      remaining: 'Remained length after piercing FWD'
+    };
+    label.textContent = `📌 ${parameterHistoryFocus.line} / ${parameterHistoryFocus.unit} / ${names[parameterHistoryFocus.parameter]} 변경 이력`;
+    bar.style.display = 'flex';
+  }
+
+  function clearParameterHistoryFocus() {
+    parameterHistoryFocus = null;
+    document.getElementById('filter-line').value = '';
+    document.getElementById('filter-unit').value = '';
+    document.getElementById('filter-axis').value = '';
+    document.getElementById('filter-part').value = '';
+    updateHistoryFocusBar();
+    renderHistoryTable();
+  }
+
   // 💡 missing 되어있던 테이블 출력 및 필터링 함수 추가
   function renderHistoryTable() {
     const tbody = document.getElementById('history-tbody');
@@ -1092,6 +1308,10 @@ async function loadHistoryFromServer() {
       if (filterUnit && unit !== filterUnit) return false;
       if (filterAxis && axis !== filterAxis) return false;
       if (filterPart && !part.includes(filterPart)) return false;
+      if (parameterHistoryFocus) {
+        if (line !== parameterHistoryFocus.line || unit !== parameterHistoryFocus.unit) return false;
+        if (classifyTapingParameter(row) !== parameterHistoryFocus.parameter) return false;
+      }
 
       return true;
     });
@@ -1099,6 +1319,11 @@ async function loadHistoryFromServer() {
     if (filtered.length === 0) {
       tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#7f8c8d;">조건에 맞는 데이터가 없습니다.</td></tr>';
       return;
+    }
+
+    // Focused parameter histories show the newest changes first.
+    if (parameterHistoryFocus) {
+      filtered.sort((a, b) => timeKey(b[0]).localeCompare(timeKey(a[0])));
     }
 
     // 화면 UI 테이블(9개 컬럼)에 맞춰 시트 데이터 인덱스 매핑
