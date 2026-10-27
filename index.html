@@ -481,6 +481,44 @@
     { value: "Cutting Knife", text: "Cutting Knife" }
   ];
 
+  // Change Value: allow signed numbers and one decimal point (e.g. -12.5, 0, 41.5).
+  function sanitizeNumericInput(input) {
+    let value = input.value.replace(/[^0-9.\-]/g, '');
+    const negative = value.startsWith('-');
+    value = value.replace(/-/g, '');
+    const dotIndex = value.indexOf('.');
+    if (dotIndex !== -1) {
+      value = value.slice(0, dotIndex + 1) + value.slice(dotIndex + 1).replace(/\./g, '');
+    }
+    input.value = (negative ? '-' : '') + value;
+  }
+
+  function isValidNumericValue(value) {
+    return /^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value.trim());
+  }
+
+  const normalParameters = [
+    { value: '펀치 유지 시간', text: '펀치 유지 시간 (Punch Dwell Time)' },
+    { value: 'press 유지시간', text: 'press 유지시간 (Press Holding Time)' },
+    { value: 'Step Height Length', text: '단차 발생 길이 (Step Height Length)' },
+    { value: 'Remained length after piercing FWD', text: '피어싱 전진 후 남은 길이 (Remained length after piercing FWD)' }
+  ];
+
+  function syncSingleNormalTypes(selectElement) {
+    if (!selectElement) return;
+    const oldValue = selectElement.value;
+    const isTapingUnit = /^Taping Unit [AB]$/.test(document.getElementById('unit').value);
+    const options = isTapingUnit ? normalParameters.slice(2) : normalParameters;
+    selectElement.innerHTML = '<option value="">-- 선택 / Select --</option>';
+    options.forEach(item => {
+      const option = document.createElement('option');
+      option.value = item.value;
+      option.textContent = item.text;
+      selectElement.appendChild(option);
+    });
+    if (options.some(item => item.value === oldValue)) selectElement.value = oldValue;
+  }
+
   function initLineOptions() {
     const lineSelect = document.getElementById('line');
     const filterLineSelect = document.getElementById('filter-line');
@@ -593,7 +631,7 @@
         <div class="form-group">
           <label>변경내용 4 - 변경 값 (Change Value)</label>
           <span class="notice-text">&lt;HMI 상의 값을 그대로 입력하세요. / Enter the value exactly as shown on the HMI.&gt;</span>
-          <input type="text" class="servo-val" oninput="this.value = this.value.replace(/[^0-9.]/g, '').replace(/(\\..*?)\\..*/g, '$1');" placeholder="숫자만 입력 가능 / Numbers only" />
+          <input type="text" class="servo-val" inputmode="decimal" oninput="sanitizeNumericInput(this)" placeholder="숫자만 입력 가능 / Numbers only" />
         </div>
         <div class="form-group">
           <label>변경내용 5 - 변경 사유 (Reason for Change)</label>
@@ -606,15 +644,12 @@
           <label>변경내용1 - 타입 (Parameter Type)</label>
           <select class="normal-type">
             <option value="">-- 선택 / Select --</option>
-            <option value="펀치 유지 시간">펀치 유지 시간 (Punch Dwell Time)</option>
-            <option value="press 유지시간">press 유지시간 (Press Holding Time)</option>
-            <option value="Step Height Length">단차 발생 길이 (Step Height Length)</option>
-            <option value="Remained length after piercing FWD">피어싱 전진 후 남은 길이 (Remained length after piercing FWD)</option>
+
           </select>
         </div>
         <div class="form-group">
           <label>변경내용2 - 변경 값 (Change Value)</label>
-          <input type="text" class="normal-val" placeholder="변경 값을 입력하세요 / Enter change value" />
+          <input type="text" class="normal-val" inputmode="decimal" oninput="sanitizeNumericInput(this)" placeholder="숫자만 입력 가능 / Numbers only" />
         </div>
         <div class="form-group">
           <label>변경내용3 - 변경 사유 (Reason for Change)</label>
@@ -627,6 +662,7 @@
     box.appendChild(contentDiv);
     container.appendChild(box);
 
+    if (type === 'normal') syncSingleNormalTypes(box.querySelector('.normal-type'));
     const masterUnit = document.getElementById('unit').value;
     if (masterUnit) {
       if (type === 'temp') syncSingleTempSelect(box.querySelector('.temp-sub-select'));
@@ -639,7 +675,8 @@
 
   function handleUnitChange() {
     checkCommonApplyVisibility();
-    updateTemperatureSubOptionsMaster(); 
+    updateTemperatureSubOptionsMaster();
+    document.querySelectorAll('#normal-dynamic-container .normal-type').forEach(syncSingleNormalTypes); 
 
     const servoPartBoxes = document.querySelectorAll('#servo-dynamic-container .servo-part');
     servoPartBoxes.forEach(select => {
@@ -662,7 +699,7 @@
     if (!selectElement) return;
     const unit = document.getElementById('unit').value;
     selectElement.innerHTML = '<option value="">-- 선택 / Select --</option>';
-    const arr = unit.startsWith('Taping Unit') ? tapingParts : defaultParts;
+    const arr = /^Taping Unit [AB]$/.test(unit) ? tapingParts.filter(item => item.value === 'Cutting Knife') : defaultParts;
     arr.forEach(opt => {
       const option = document.createElement('option');
       option.value = opt.value; option.textContent = opt.text;
@@ -704,12 +741,10 @@
 
     if (!descSelect || !axisSelect) return;
 
-    // Taping Unit: confirmed Part -> Axis -> Teaching Position mapping.
-    // Attacher Jig stays manual until its parameters are defined.
-    if (unit.startsWith('Taping Unit')) {
+    // Taping Unit A/B: Cutting Knife (X-axis) only.
+    if (/^Taping Unit [AB]$/.test(unit)) {
       const mappings = {
-        'Cutting Knife': { axis: 'X', positions: ['Bwd Pos', 'Fwd Pos'] },
-        'Feeding Gripper': { axis: 'Z', positions: ['Standby Pos', 'Grip Pos', 'Avoid Pos'] }
+        'Cutting Knife': { axis: 'X', positions: ['Bwd Pos', 'Fwd Pos'] }
       };
       const mapping = mappings[part];
       descSelect.innerHTML = '<option value="">-- 선택 / Select --</option>';
@@ -906,8 +941,7 @@
         const servoType = box.querySelector('.servo-type').value;
         const servoAxis = box.querySelector('.servo-axis').value;
         const partVal = box.querySelector('.servo-part').value;
-        // Read from the visible input: preset dropdown for Cutting Knife / Feeding Gripper,
-        // free-text input for Attacher Jig, and dropdown for other units.
+        // Read the visible description field (preset dropdown for Taping Cutting Knife).
         const descSelect = box.querySelector('.servo-desc-select');
         const descInput = box.querySelector('.servo-desc-input');
         const descVal = descInput.style.display === 'block'
@@ -917,6 +951,10 @@
         const servoReason = box.querySelector('.servo-reason').value;
 
         if(!servoType || !servoAxis || !partVal || !descVal || !servoVal || !servoReason) { alert(`Servo Part #${idx} 세부 항목을 입력하세요.`); return; }
+        if (!isValidNumericValue(servoVal)) { alert(`Servo Part #${idx} 변경 값은 숫자만 입력해주세요.`); return; }
+        if (/^Taping Unit [AB]$/.test(unit) && (partVal !== 'Cutting Knife' || servoAxis !== 'X' || !['Bwd Pos', 'Fwd Pos'].includes(descVal))) {
+          alert('Taping Unit A/B는 Cutting Knife (X축)만 등록할 수 있습니다.'); return;
+        }
 
         partialPayloads.push({ sub1: servoType, sub2: servoAxis, sub3: `${partVal} - ${descVal}`, sub4: servoVal, sub5: servoReason });
         clipboardText += `\n[Part #${idx}]\n• 구분(Type): ${servoType}\n• 축(Axis): ${servoAxis}\n• Part 정보: ${partVal} - ${descVal}\n• 변경 값(Value): ${servoVal}\n• 변경 사유: ${servoReason}\n`;
@@ -933,6 +971,10 @@
         const normalReason = box.querySelector('.normal-reason').value;
 
         if(!normalType || !normalVal || !normalReason) { alert(`Normal Part #${idx} 세부 항목을 입력하세요.`); return; }
+        if (!isValidNumericValue(normalVal)) { alert(`Normal Part #${idx} 변경 값은 숫자만 입력해주세요.`); return; }
+        if (/^Taping Unit [AB]$/.test(unit) && !['Step Height Length', 'Remained length after piercing FWD'].includes(normalType)) {
+          alert('Taping Unit A/B는 지정된 두 Normal Parameter만 등록할 수 있습니다.'); return;
+        }
         
         partialPayloads.push({ sub1: normalType, sub2: normalVal, sub3: normalReason, sub4: "", sub5: "" });
         clipboardText += `\n[Part #${idx}]\n• 타입(Type): ${normalType}\n• 변경 값(Value): ${normalVal}\n• 변경 사유: ${normalReason}\n`;
